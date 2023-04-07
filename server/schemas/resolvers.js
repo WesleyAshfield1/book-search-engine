@@ -1,47 +1,52 @@
-const { gql } = require('apollo-server-express');
+const { AuthenticationError } = require('apollo-server-express');
 
-const typeDefs = gql`
-type User {
-    _id: ID!
-    username: String!
-    email: String!
-    bookCount: Int
-    savedBooks: [Book]
-}
+// import user model
+const { User } = require('../models');
+// import sign token function from auth
+const { signToken } = require('../utils/auth');
 
-type Book {
-    bookId: ID
-    authors: String
-    description: String
-    title: String
-    image: String
-    link: Sting
-}
+const resolvers = {
+    Query: {
+      users: async () => {
+        return User.find();
+      },
+  
+      user: async (parent, { _id }) => {
+        return User.findOne({ _id: userId });
+      },
+      // By adding context to our query, we can retrieve the logged in user without specifically searching for them
+      me: async (parent, args, context) => {
+        if (context.user) {
+          return User.findOne({ _id: context.user._id });
+        }
+        throw new AuthenticationError('You need to be logged in!');
+      },
+    },
+  
+    Mutation: {
+      addUser: async (parent, { username, email, password }) => {
+        const user = await User.create({ username, email, password });
+        const token = signToken(user);
+  
+        return { token, user };
+      },
+      login: async (parent, { email, password }) => {
+        const user = await User.findOne({ email });
+  
+        if (!user) {
+          throw new AuthenticationError('No profile with this email found!');
+        }
+  
+        const correctPw = await user.isCorrectPassword(password);
+  
+        if (!correctPw) {
+          throw new AuthenticationError('Incorrect password!');
+        }
+  
+        const token = signToken(user);
+        return { token, user };
+      },
+    },
+};
 
-type Auth {
-    token: ID!
-    user: User
-}
-input SaveBookInput {
-    authors: String!
-    description: String!
-    title: String!
-    image: String!
-    bookId: ID!
-    link: Sting!
-
-}
-
-type Query {
-    me: User
-}
-
-type Mutation {
-    login(email: String!, password: String!): Auth
-    addUser(username: String!, email: String!, password: String!): Auth
-    saveBook(criteria: SaveBookInput): User
-    removeBook(bookId: ID!): User
-}
-
-`;
-
+module.exports = resolvers;
